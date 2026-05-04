@@ -1,0 +1,50 @@
+{
+  "name": "pi-caffeinated",
+  "version": "0.1.0",
+  "description": "Pi extension that toggles macOS caffeinate with a centered coffee break modal.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Tanishq Kancharla",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "caffeinate",
+    "macos",
+    "coffee"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tanishqkancharla/pi-caffeinate.git"
+  },
+  "homepage": "https://github.com/tanishqkancharla/pi-caffeinate#readme",
+  "bugs": {
+    "url": "https://github.com/tanishqkancharla/pi-caffeinate/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "build": "echo 'pi loads this package directly via jiti; no build step required'"
+  },
+  "files": [
+    "README.md",
+    "LICENSE",
+    "caffeinate.ts"
+  ],
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*"
+  },
+  "devDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.8.3"
+  },
+  "pi": {
+    "extensions": [
+      "./caffeinate.ts"
+    ]
+  }
+}
