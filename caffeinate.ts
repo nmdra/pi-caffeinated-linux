@@ -1,12 +1,14 @@
 /**
- * /caffeinate — toggle macOS caffeinate in a background process.
- * While running, the editor is replaced with a status screen.
+ * /caffeinate — toggle a platform-native keep-awake process.
+ * While running, Pi shows a centered coffee break modal.
  * Press Escape to stop caffeinating.
  */
 
 import type { ExtensionAPI, Theme } from "@mariozechner/pi-coding-agent";
 import { matchesKey, visibleWidth } from "@mariozechner/pi-tui";
 import { spawn, type ChildProcess } from "node:child_process";
+import { existsSync } from "node:fs";
+import { delimiter, join } from "node:path";
 
 const TICK_MS = 700;
 const WIDE_INNER_WIDTH = 74;
@@ -17,6 +19,12 @@ const CODE_REVEAL_STEPS = 7;
 
 type TuiHandle = { requestRender: () => void };
 type StyleFn = (text: string) => string;
+type AwakeCommand = {
+  cmd: string;
+  args: string[];
+  label: string;
+  awakeMessage: string;
+};
 
 const TERMINAL_STREAM = [
   "$ caffein",
@@ -37,6 +45,77 @@ const STEAM_FRAMES = [
   ["       (  )  ", "      (   )  ", "       ) ) ( "],
   ["      )  (   ", "     (   ) ) ", "      ) ( (  "],
 ];
+
+function getAwakeCommand(): AwakeCommand | null {
+  switch (process.platform) {
+    case "darwin":
+      return {
+        cmd: "caffeinate",
+        args: ["-dimsu"],
+        label: "macOS caffeinate",
+        awakeMessage: "Your Mac won't sleep.",
+      };
+    case "linux":
+      return {
+        cmd: "systemd-inhibit",
+        args: [
+          "--what=idle:sleep",
+          "--who=pi-caffeinated",
+          "--why=Keeping the machine awake from Pi",
+          "--mode=block",
+          "sleep",
+          "infinity",
+        ],
+        label: "systemd-inhibit",
+        awakeMessage: "Your machine won't idle-sleep.",
+      };
+    case "win32":
+      return {
+        cmd: "powershell.exe",
+        args: [
+          "-NoProfile",
+          "-NoLogo",
+          "-WindowStyle",
+          "Hidden",
+          "-Command",
+          [
+            "Add-Type -MemberDefinition",
+            "'[DllImport(\"kernel32.dll\")] public static extern uint SetThreadExecutionState(uint esFlags);'",
+            "-Name NativeMethods -Namespace Win32;",
+            "[Win32.NativeMethods]::SetThreadExecutionState(0x80000001);",
+            "[Threading.Thread]::Sleep([Threading.Timeout]::Infinite)",
+          ].join(" "),
+        ],
+        label: "Windows power request",
+        awakeMessage: "Your machine won't idle-sleep.",
+      };
+    default:
+      return null;
+  }
+}
+
+function isExecutableAvailable(cmd: string): boolean {
+  const pathValue = process.env.PATH;
+  if (!pathValue) return false;
+
+  const extensions =
+    process.platform === "win32"
+      ? (process.env.PATHEXT || ".EXE;.CMD;.BAT;.COM")
+          .split(";")
+          .filter(Boolean)
+      : [""];
+
+  const hasExtension = process.platform === "win32" && /\.[^\\/]+$/.test(cmd);
+  const candidates = pathValue
+    .split(delimiter)
+    .flatMap((directory) =>
+      hasExtension
+        ? [join(directory, cmd)]
+        : extensions.map((extension) => join(directory, `${cmd}${extension}`)),
+    );
+
+  return candidates.some((candidate) => existsSync(candidate));
+}
 
 function formatElapsed(startTime: number): string {
   const elapsed = Math.floor((Date.now() - startTime) / 1000);
@@ -129,17 +208,20 @@ class CaffeinateComponent {
   private cachedLines: string[] = [];
   private cachedWidth = 0;
   private cachedFrame = -1;
+  private awakeMessage: string;
 
   constructor(
     tui: TuiHandle,
     theme: Theme,
     onClose: () => void,
     startTime: number,
+    awakeMessage: string,
   ) {
     this.tui = tui;
     this.theme = theme;
     this.onClose = onClose;
     this.startTime = startTime;
+    this.awakeMessage = awakeMessage;
     this.interval = setInterval(() => {
       this.frame++;
       this.tui.requestRender();
@@ -217,7 +299,7 @@ class CaffeinateComponent {
       this.theme.bold("Relax and go"),
       this.theme.bold("grab a coffee."),
       "",
-      muted("Your mac won't sleep."),
+      muted(this.awakeMessage),
       `${muted("elapsed")} ${accent(timeStr)}`,
       "",
       `${accent(this.theme.bold("esc"))} ${muted("to stop")}`,
@@ -266,7 +348,7 @@ class CaffeinateComponent {
       ...this.renderComputer(dim),
       "",
       this.theme.bold("Relax and go grab a coffee."),
-      muted("Your mac won't sleep."),
+      muted(this.awakeMessage),
       `${muted("elapsed")} ${accent(timeStr)}`,
       `${accent(this.theme.bold("esc"))} ${muted("to stop")}`,
     ];
@@ -323,6 +405,7 @@ class CaffeinateComponent {
 }
 
 export default function (pi: ExtensionAPI) {
+  const awakeCommand = getAwakeCommand();
   let caffeinateProc: ChildProcess | null = null;
   let startTime: number | null = null;
   let activeComponent: CaffeinateComponent | null = null;
@@ -331,10 +414,18 @@ export default function (pi: ExtensionAPI) {
     const proc = caffeinateProc;
     if (!proc) return;
 
-    proc.kill("SIGTERM");
+    if (process.platform === "win32") {
+      proc.kill();
+    } else {
+      proc.kill("SIGTERM");
+    }
     const forceKill = setTimeout(() => {
-      if (proc.exitCode === null && proc.signalCode === null)
+      if (proc.exitCode !== null || proc.signalCode !== null) return;
+      if (process.platform === "win32") {
+        proc.kill();
+      } else {
         proc.kill("SIGKILL");
+      }
     }, 500);
     forceKill.unref?.();
 
@@ -348,7 +439,7 @@ export default function (pi: ExtensionAPI) {
   }
 
   pi.registerCommand("caffeinate", {
-    description: "Toggle caffeinate (keeps your Mac awake)",
+    description: "Toggle caffeinate (keeps your machine awake)",
     handler: async (_args, ctx) => {
       if (caffeinateProc) {
         kill();
@@ -357,11 +448,37 @@ export default function (pi: ExtensionAPI) {
         return;
       }
 
-      caffeinateProc = spawn("caffeinate", ["-dimsu"], {
+      if (!awakeCommand) {
+        ctx.ui.notify(
+          `Caffeinate is not supported on ${process.platform}.`,
+          "warning",
+        );
+        return;
+      }
+
+      if (!isExecutableAvailable(awakeCommand.cmd)) {
+        ctx.ui.notify(
+          `Could not find ${awakeCommand.cmd}; ${awakeCommand.label} is unavailable on this machine.`,
+          "warning",
+        );
+        return;
+      }
+
+      caffeinateProc = spawn(awakeCommand.cmd, awakeCommand.args, {
         stdio: "ignore",
         detached: false,
       });
       startTime = Date.now();
+
+      caffeinateProc.on("error", (error) => {
+        caffeinateProc = null;
+        startTime = null;
+        ctx.ui.setStatus("caffeinate", undefined);
+        ctx.ui.notify(
+          `Could not start ${awakeCommand.label}: ${error.message}`,
+          "warning",
+        );
+      });
 
       caffeinateProc.on("exit", () => {
         caffeinateProc = null;
@@ -384,6 +501,7 @@ export default function (pi: ExtensionAPI) {
               done();
             },
             startTime!,
+            awakeCommand.awakeMessage,
           );
           return activeComponent;
         },
@@ -399,6 +517,8 @@ export default function (pi: ExtensionAPI) {
       activeComponent = null;
     },
   });
+
+  process.once("exit", kill);
 
   pi.on("session_shutdown", async () => {
     disposeComponent();

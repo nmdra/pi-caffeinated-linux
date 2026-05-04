@@ -1,7 +1,7 @@
 {
   "name": "pi-caffeinated",
-  "version": "0.1.0",
-  "description": "Pi extension that toggles macOS caffeinate with a centered coffee break modal.",
+  "version": "0.1.1",
+  "description": "Pi extension that toggles a cross-platform keep-awake process with a centered coffee break modal.",
   "type": "module",
   "license": "MIT",
   "author": "Tanishq Kancharla",
@@ -10,6 +10,8 @@
     "pi-extension",
     "caffeinate",
     "macos",
+    "linux",
+    "windows",
     "coffee"
   ],
   "repository": {
