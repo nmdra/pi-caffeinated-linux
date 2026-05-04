@@ -1,8 +1,6 @@
-# pi-caffeinate
+# pi-caffeinated
 
 A Pi extension that adds a `/caffeinate` command for macOS. It starts `caffeinate -dimsu` in the background and shows a centered coffee-break modal while your Mac is kept awake.
-
-The npm package is published as `pi-caffeinated` because `pi-caffeinate` is already taken on npm.
 
 ## Features
 

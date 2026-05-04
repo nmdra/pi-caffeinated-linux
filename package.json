@@ -14,11 +14,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tanishqkancharla/pi-caffeinate.git"
+    "url": "git+https://github.com/tanishqkancharla/pi-caffeinated.git"
   },
-  "homepage": "https://github.com/tanishqkancharla/pi-caffeinate#readme",
+  "homepage": "https://github.com/tanishqkancharla/pi-caffeinated#readme",
   "bugs": {
-    "url": "https://github.com/tanishqkancharla/pi-caffeinate/issues"
+    "url": "https://github.com/tanishqkancharla/pi-caffeinated/issues"
   },
   "engines": {
     "node": ">=18"
