@@ -2,7 +2,7 @@
 
 A Pi extension that adds a `/caffeinate` command for keeping your machine awake. It starts a platform-native keep-awake process in the background and shows a centered coffee-break modal while it runs.
 
-<img width="1128" height="1080" alt="pi-caffeinated-middle-hq" src="https://github.com/user-attachments/assets/685b16b0-8b56-4b6f-8baa-cfbf0da335e8" />
+<img width="2117" height="2160" alt="image" src="https://github.com/user-attachments/assets/cee11bc9-8225-4b7f-b4f2-ec5c3429c67b" />
 
 ## Features
 
