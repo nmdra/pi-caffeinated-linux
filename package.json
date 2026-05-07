@@ -1,6 +1,6 @@
 {
   "name": "pi-caffeinated",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Pi extension that toggles a cross-platform keep-awake process with a centered coffee break modal.",
   "type": "module",
   "license": "MIT",
@@ -35,12 +35,12 @@
     "caffeinate.ts"
   ],
   "peerDependencies": {
-    "@mariozechner/pi-coding-agent": "*",
-    "@mariozechner/pi-tui": "*"
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
   },
   "devDependencies": {
-    "@mariozechner/pi-coding-agent": "*",
-    "@mariozechner/pi-tui": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
     "@types/node": "^24.0.0",
     "typescript": "^5.8.3"
   },
