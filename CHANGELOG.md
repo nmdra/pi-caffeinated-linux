@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file. See
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for the format.
 
+## [0.0.3](https://github.com/nmdra/pi-caffeinated-linux/compare/pi-caffeinated-linux-v0.0.2...pi-caffeinated-linux-v0.0.3) (2026-09-01)
+
+
+### Bug Fixes
+
+* **footer:** remove unwanted awake quotes ([2f306ca](https://github.com/nmdra/pi-caffeinated-linux/commit/2f306ca8a2b64d91de3656ea68c2dae3f22e4aaa))
+
 ## [0.0.2](https://github.com/nmdra/pi-caffeinated-linux/compare/pi-caffeinated-linux-v0.0.1...pi-caffeinated-linux-v0.0.2) (2026-09-01)
 
 
