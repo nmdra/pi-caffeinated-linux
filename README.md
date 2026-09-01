@@ -2,6 +2,8 @@
 
 A Linux-only Pi extension that keeps the machine awake with `systemd-inhibit`.
 
+![pi-caffeinated-linux overview](assets/caffeinate-overview.svg)
+
 ## Features
 
 - `/caffeinate` keeps the machine awake until the current Pi task settles
