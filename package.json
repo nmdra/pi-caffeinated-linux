@@ -1,6 +1,6 @@
 {
   "name": "@nimendra/pi-caffeinated-linux",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Linux Pi extension that keeps the machine awake with systemd-inhibit and shows Pi and KDE status indicators.",
   "type": "module",
   "license": "MIT",
