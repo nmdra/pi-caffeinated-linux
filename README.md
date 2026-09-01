@@ -1,27 +1,34 @@
-<img width="1536" height="768" alt="tanishqk_A_busy_cluttered_cafe-diner_in_the_early_morning_sun_b9ac1268-7b0b-4464-9e0e-5c918d5c5877_0" src="https://github.com/user-attachments/assets/52809be9-6bec-497d-8bce-d78f42e70548" />
-
 # pi-caffeinated
 
-A Pi extension that adds a `/caffeinate` command for keeping your machine awake. It starts a platform-native keep-awake process in the background and shows a centered coffee-break modal while it runs.
-
-<img width="2117" height="2160" alt="image" src="https://github.com/user-attachments/assets/cee11bc9-8225-4b7f-b4f2-ec5c3429c67b" />
+A Linux-only Pi extension that keeps the machine awake with
+`systemd-inhibit`.
 
 ## Features
 
-- `/caffeinate` toggles a platform-native keep-awake process
-- Centered overlay modal that captures input while running
-- Escape stops caffeinate and closes the modal
-- Animated mug, computer, and elapsed timer
-- Status bar indicator while caffeinate is active
-- Cleans up the background process when Pi shuts down
+- `/caffeinate` toggles a systemd inhibitor for idle and sleep actions
+- Colored live Pi footer status: ` [awake] idle+sleep · <elapsed>`
+- Press `Esc` or run `/caffeinate` again to stop
+- KDE Plasma tray indicator through the StatusNotifierItem D-Bus protocol
+- Click the tray indicator to stop caffeinate
+- Cleans up the inhibitor and indicators when Pi shuts down
 
-## Platform support
+## Requirements
 
-| Platform | Mechanism | Requires |
-| --- | --- | --- |
-| macOS | `caffeinate -dimsu` | Built in |
-| Linux | `systemd-inhibit --what=idle:sleep ... sleep infinity` | `systemd-inhibit` on systemd-based distros |
-| Windows | PowerShell calling `SetThreadExecutionState(ES_CONTINUOUS \| ES_SYSTEM_REQUIRED)` | PowerShell |
+- Pi coding agent extension runtime
+- Linux with `systemd-inhibit` available on `PATH`
+- A D-Bus session bus for the optional KDE tray indicator
+
+The extension uses this systemd command:
+
+```text
+systemd-inhibit --what=idle:sleep --who=pi-caffeinated \
+  --why="Keeping the machine awake from Pi" --mode=block sleep infinity
+```
+
+The `idle` lock prevents automatic idle handling. The `sleep` lock prevents
+user-requested suspend and hibernation. The tray indicator is optional; the Pi
+status and systemd inhibitor continue to work when no StatusNotifier host is
+available.
 
 ## Install
 
@@ -39,12 +46,29 @@ Run the command inside Pi:
 /caffeinate
 ```
 
-Press `Esc` in the modal to stop. Running `/caffeinate` again also toggles it off.
+While active:
 
-## Requirements
+- Pi shows a colored ` [awake] idle+sleep · <elapsed>` status in the footer.
+- KDE Plasma shows an active coffee indicator in the system tray when a
+  StatusNotifier host is available.
 
-- Pi coding agent extension runtime
-- One supported keep-awake backend from the platform table above
+Stop caffeinate with `Esc`, by running `/caffeinate` again, or by clicking the
+KDE tray indicator.
+
+## Diagnostics
+
+List active systemd inhibitors with:
+
+```sh
+systemd-inhibit --list
+```
+
+Look for an entry with `pi-caffeinated` and both `idle` and `sleep` (the
+order may appear as `sleep:idle`). If `systemd-inhibit`
+is not found, install the systemd package for your distribution. If the KDE
+tray indicator is unavailable, check that a user D-Bus session and a Plasma
+StatusNotifier host are running; the colored Pi footer status remains available
+without them.
 
 ## License
 

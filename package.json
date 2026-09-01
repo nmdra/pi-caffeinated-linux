@@ -1,7 +1,7 @@
 {
   "name": "pi-caffeinated",
   "version": "0.1.2",
-  "description": "Pi extension that toggles a cross-platform keep-awake process with a centered coffee break modal.",
+  "description": "Linux Pi extension that keeps the machine awake with systemd-inhibit and shows Pi and KDE status indicators.",
   "type": "module",
   "license": "MIT",
   "author": "Tanishq Kancharla",
@@ -9,10 +9,14 @@
     "pi-package",
     "pi-extension",
     "caffeinate",
-    "macos",
     "linux",
-    "windows",
+    "kde",
+    "systemd",
+    "status-notifier",
     "coffee"
+  ],
+  "os": [
+    "linux"
   ],
   "repository": {
     "type": "git",
@@ -27,13 +31,19 @@
   },
   "scripts": {
     "check": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts",
     "build": "echo 'pi loads this package directly via jiti; no build step required'"
   },
   "files": [
     "README.md",
     "LICENSE",
-    "caffeinate.ts"
+    "caffeinate.ts",
+    "linux-awake.ts",
+    "kde-status-notifier.ts"
   ],
+  "dependencies": {
+    "dbus-next": "^0.10.2"
+  },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
     "@earendil-works/pi-tui": "*"
@@ -42,6 +52,7 @@
     "@earendil-works/pi-coding-agent": "*",
     "@earendil-works/pi-tui": "*",
     "@types/node": "^24.0.0",
+    "tsx": "^4.23.13",
     "typescript": "^5.8.3"
   },
   "pi": {

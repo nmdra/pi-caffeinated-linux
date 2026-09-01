@@ -9,5 +9,11 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["caffeinate.ts"]
+  "include": [
+    "caffeinate.ts",
+    "linux-awake.ts",
+    "pi-indicator.ts",
+    "kde-status-notifier.ts",
+    "test/**/*.test.ts"
+  ]
 }
