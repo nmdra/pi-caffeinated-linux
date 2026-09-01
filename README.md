@@ -1,7 +1,6 @@
 # pi-caffeinated-linux
 
-A Linux-only Pi extension that keeps the machine awake with
-`systemd-inhibit`.
+A Linux-only Pi extension that keeps the machine awake with `systemd-inhibit`.
 
 ## Features
 
@@ -28,10 +27,7 @@ systemd-inhibit --what=idle:sleep --who=pi-caffeinated \
   --why="Keeping the machine awake from Pi" --mode=block sleep infinity
 ```
 
-The `idle` lock prevents automatic idle handling. The `sleep` lock prevents
-user-requested suspend and hibernation. The tray indicator is optional; the Pi
-status and systemd inhibitor continue to work when no StatusNotifier host is
-available.
+The `idle` lock prevents automatic idle handling. The `sleep` lock prevents user-requested suspend and hibernation. The tray indicator is optional; the Pi status and systemd inhibitor continue to work when no StatusNotifier host is available.
 
 ## Install
 
@@ -39,7 +35,7 @@ available.
 pi install npm:@nimendra/pi-caffeinated-linux@0.0.1
 ```
 
-Restart Pi after installing or updating the extension.
+Restart/Reload Pi after installing or updating the extension.
 
 ## Usage
 
@@ -50,10 +46,7 @@ Run the command inside Pi:
 /caffeinate manual   # manual: stay active until stopped
 ```
 
-`/caffeinate` is also accepted as `/caffeinate auto`. Automatic mode stops
-when Pi has finished the agent response, tool calls, retries, compaction, and
-queued follow-up work. Manual mode remains active until `Esc`, `/caffeinate`,
-the KDE tray indicator, or Pi shutdown stops it.
+`/caffeinate` is also accepted as `/caffeinate auto`. Automatic mode stops when Pi has finished the agent response, tool calls, retries, compaction, and queued follow-up work. Manual mode remains active until `Esc`, `/caffeinate`, the KDE tray indicator, or Pi shutdown stops it.
 
 While active:
 
@@ -74,12 +67,7 @@ List active systemd inhibitors with:
 systemd-inhibit --list
 ```
 
-Look for an entry with `pi-caffeinated` and both `idle` and `sleep` (the
-order may appear as `sleep:idle`). If `systemd-inhibit`
-is not found, install the systemd package for your distribution. If the KDE
-tray indicator is unavailable, check that a user D-Bus session and a Plasma
-StatusNotifier host are running; the colored Pi footer status remains available
-without them.
+Look for an entry with `pi-caffeinated` and both `idle` and `sleep` (the order may appear as `sleep:idle`). If `systemd-inhibit` is not found, install the systemd package for your distribution. If the KDE tray indicator is unavailable, check that a user D-Bus session and a Plasma StatusNotifier host are running; the colored Pi footer status remains available without them.
 
 ### Troubleshooting
 
@@ -90,27 +78,6 @@ without them.
 | Stop reports a signal failure | Process permissions and `systemd-inhibit --list`                         | End the stale process manually if required, then restart Pi.                      |
 | Tray is unavailable           | `echo "$DBUS_SESSION_BUS_ADDRESS"`; check the Plasma StatusNotifier host | The footer and inhibitor still work; restore the user D-Bus session for the tray. |
 | Tray registration fails       | `qdbus6 --session`                                                       | Check the KDE/freedesktop StatusNotifierWatcher and retry Pi.                     |
-
-## Publishing
-
-Releases use npm Trusted Publishing from GitHub Actions. The package trusts
-repository `nmdra/pi-caffeinated-linux` and workflow
-`.github/workflows/release.yml`; no npm token is stored in GitHub. The publish
-job requests `id-token: write` and runs `npm publish --provenance --access
-public` with npm 11.15 or newer.
-
-To configure or inspect the connection as the package owner:
-
-```sh
-npm trust github @nimendra/pi-caffeinated-linux \
-  --repo nmdra/pi-caffeinated-linux \
-  --file release.yml \
-  --allow-publish
-npm trust list @nimendra/pi-caffeinated-linux
-```
-
-If a connection must be replaced, list its ID, revoke it, and create the new
-connection before merging a release PR.
 
 ## License
 
