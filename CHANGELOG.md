@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file. See
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for the format.
 
+## [0.0.2](https://github.com/nmdra/pi-caffeinated-linux/compare/pi-caffeinated-linux-v0.0.1...pi-caffeinated-linux-v0.0.2) (2026-09-01)
+
+
+### Bug Fixes
+
+* **release:** prepare 0.0.2 publication ([50ede66](https://github.com/nmdra/pi-caffeinated-linux/commit/50ede66909abca243603cfc99549fcfa7fd3bb5a))
+
 ## [0.0.1](https://github.com/nmdra/pi-caffeinated-linux/compare/pi-caffeinated-linux-v0.0.1...pi-caffeinated-linux-v0.0.1) (2026-09-01)
 
 
