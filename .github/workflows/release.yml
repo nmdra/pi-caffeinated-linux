@@ -3,13 +3,6 @@ name: release
 on:
   push:
     branches: [main]
-  workflow_dispatch:
-    inputs:
-      publish:
-        description: Publish the current package version to npm
-        required: true
-        default: false
-        type: boolean
 
 permissions:
   contents: read
@@ -36,7 +29,7 @@ jobs:
     needs: release-please
     runs-on: ubuntu-latest
     environment: production
-    if: ${{ needs.release-please.outputs.release_created || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+    if: ${{ needs.release-please.outputs.release_created }}
     permissions:
       contents: read
       id-token: write
