@@ -8,7 +8,7 @@ A Linux-only Pi extension that keeps the machine awake with
 - `/caffeinate` keeps the machine awake until the current Pi task settles
 - `/caffeinate manual` keeps it awake until you stop it yourself
 - Colored live Pi footer status with a short random coffee quote, for example
-  ` [awake] Nap denied · <elapsed>`
+  ` [awake] Still brewing · <elapsed>`
 - Press `Esc` or run `/caffeinate` again to stop
 - KDE Plasma tray indicator through the StatusNotifierItem D-Bus protocol
 - Click the tray indicator or choose **Stop keeping awake** from its menu
@@ -57,7 +57,7 @@ the KDE tray indicator, or Pi shutdown stops it.
 
 While active:
 
-- Pi shows a colored status such as ` [awake] Nap denied · <elapsed>` in the
+- Pi shows a colored status such as ` [awake] Still brewing · <elapsed>` in the
   footer. The quote is selected once when the session starts, so it does not
   flicker every second.
 - KDE Plasma shows an active coffee indicator in the system tray when a

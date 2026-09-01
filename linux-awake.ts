@@ -27,9 +27,6 @@ export const LINUX_AWAKE_COMMAND: AwakeCommand = {
 
 export const AWAKE_QUOTES = [
   "Sleep is overrated",
-  "Nap denied",
-  "Not today, sleep",
-  "Powered by stubbornness",
   "The idle police lost",
   "Still brewing",
   "Your laptop is on duty",
