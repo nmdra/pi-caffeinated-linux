@@ -160,21 +160,14 @@ Intentionally out of scope:
   cases; `grep` source and README for `darwin`, `win32`, `powershell`, and
   `PATHEXT`; `npm run check`.
 
-- [x] **Task 3: Replace the modal with the Pi indicator component.** Create a
-  `CaffeinateIndicator` that renders only a four-frame, ASCII-only cup such as
-  `"  ~  "`, `" ( )  "`, and `"(___) >"` with steam movement, clips/pads by
-  `visibleWidth`, caches by width/frame, invalidates correctly, and requests
-  renders at the existing tick cadence. Remove the large mug/computer/terminal
-  art and centered-overlay width calculations. Show it only in TUI mode through
-  `ctx.ui.custom()` with `overlay: true` and
-  `overlayOptions: { anchor: "top-right", margin: 1, width: 8,
-  nonCapturing: true }`.
-  **Files:** `pi-indicator.ts` (new), `caffeinate.ts`.
-  **Seam:** component `render(width)`/`invalidate()` and the TUI custom-overlay
-  factory.
-  **Verify:** unit-test all frames and narrow widths so every rendered line is
-  at most the requested width; manually resize Pi and confirm the cup remains
-  top-right without blocking editor input.
+- [x] **Task 3: Keep the Pi UI compact and non-blocking.** Remove the large
+  modal and the later overlay animation entirely. Keep Escape available through
+  the raw terminal-input listener, and render the colored awake message in the
+  persistent Pi footer instead of a custom component.
+  **Files:** `caffeinate.ts`, removed `pi-indicator.ts`.
+  **Seam:** `ctx.ui.setStatus()` plus the existing Escape listener.
+  **Verify:** confirm the footer fits normal terminal widths and the editor is
+  never replaced or covered by an overlay.
 
 - [x] **Task 4: Add the KDE StatusNotifierItem service.** Implement
   `KdeStatusNotifier` with a bus adapter seam. Lazily connect to the session
@@ -197,40 +190,40 @@ Intentionally out of scope:
 
 - [x] **Task 5: Wire one active-session state machine to all indicators.** Refactor
   the command handler around one active state containing the child process,
-  start time, UI completion callback, Escape-listener unsubscribe, Pi indicator,
-  and tray instance. Set `[awake] idle+sleep · <elapsed>` immediately after a
-  successful spawn, update the footer and tray tooltip from the shared clock,
-  and clear everything through one idempotent finalizer. Handle TUI, RPC, print,
-  and JSON modes without calling TUI-only custom components. Preserve
-  `/caffeinate`, Escape, tray activation, process error/exit, session shutdown,
-  and host process exit semantics without dangling timers or overlays.
-  **Files:** `caffeinate.ts`, `pi-indicator.ts`, `kde-status-notifier.ts`.
+  start time, mode (`auto` or `manual`), Escape-listener unsubscribe, and tray
+  instance. Set the colored awake status immediately after spawn, update the
+  footer and tray tooltip from the shared clock, and clear everything through
+  one idempotent finalizer. Make `/caffeinate` default to auto cleanup at
+  `agent_settled`; keep `/caffeinate manual` persistent until an explicit stop.
+  Preserve Escape, tray activation, process error/exit, session shutdown, and
+  host process exit semantics without TUI-only custom components.
+  **Files:** `caffeinate.ts`, `kde-status-notifier.ts`.
   **Seam:** command handler with mocked `spawn()` and mocked `ctx.ui`/D-Bus
   adapter.
-  **Verify:** integration tests cover start, second-command stop, Escape stop,
-  tray-click stop, unexpected child exit, spawn error, overlay completion, and
-  session shutdown; confirm each path calls cleanup once and leaves no status,
-  listener, timer, process, or bus export behind.
+  **Verify:** integration tests cover auto settle, manual persistence, second-
+  command stop, Escape stop, tray-click stop, unexpected child exit, spawn
+  error, and session shutdown; confirm each path calls cleanup once and leaves
+  no status, listener, timer, process, or bus export behind.
 
 - [x] **Task 6: Add automated checks and test commands.** Add a lightweight
   TypeScript test runner and tests for Linux backend configuration, elapsed/status
-  formatting, indicator width/frame behavior, D-Bus contract, and lifecycle
-  cleanup. Keep tests independent of a real KDE session bus; reserve the live
-  tray check for the verification procedure.
+  formatting, colored footer behavior, D-Bus contract, and lifecycle cleanup.
+  Keep tests independent of a real KDE session bus; reserve the live tray check
+  for the verification procedure.
   **Files:** `test/linux-awake.test.ts` (new),
-  `test/pi-indicator.test.ts` (new), `test/kde-status-notifier.test.ts` (new),
-  `test/caffeinate.test.ts` (new), `package.json`, `package-lock.json`.
-  **Seam:** public pure helpers, component interface, fake child process, fake
-  UI, and fake D-Bus transport.
+  `test/kde-status-notifier.test.ts` (new), `test/caffeinate.test.ts` (new),
+  `package.json`, `package-lock.json`.
+  **Seam:** public pure helpers, fake child process, fake UI, and fake D-Bus
+  transport.
   **Verify:** `npm run check && npm test`; all tests pass without KDE or
   `systemd-inhibit` mocks leaking into the host.
 
 - [x] **Task 7: Rewrite documentation for Linux/KDE behavior.** Remove the old
   macOS/Windows table, stale centered-overlay screenshot and wording, and
   “one supported backend” language. Document the systemd requirement, exact
-  `idle+sleep` semantics, live Pi footer/top-right indicator, Escape and
-  command/tray stop controls, KDE session-bus tray behavior, graceful tray
-  fallback, and diagnostics with `systemd-inhibit --list`.
+  `idle+sleep` semantics, automatic/manual modes, colored Pi footer status,
+  Escape and command/tray stop controls, KDE session-bus tray behavior,
+  graceful tray fallback, and diagnostics with `systemd-inhibit --list`.
   **Files:** `README.md`.
   **Seam:** user-visible install, usage, requirements, and troubleshooting
   documentation.
@@ -245,15 +238,15 @@ Intentionally out of scope:
    and runtime modules, includes `dbus-next`, and does not advertise non-Linux
    support.
 3. In this KDE session, load the extension in Pi and run `/caffeinate`:
-   - Pi shows `[awake] idle+sleep · <elapsed>` and the four-frame ASCII cup at
-     the top-right without covering or capturing the editor.
+   - Pi shows the colored ` [awake] idle+sleep · <elapsed>` footer status;
+     automatic mode stops after `agent_settled`.
    - `systemd-inhibit --list` shows a `pi-caffeinated` block entry for
      `idle:sleep`.
    - `qdbus6 --session` shows the new StatusNotifierItem service, and Plasma
      shows the active tray item with the matching tooltip.
-4. Confirm all three stop controls—Escape, `/caffeinate`, and tray activation—
-   remove the Pi status, overlay, child process, and tray item, and that a
-   second stop is harmless.
+4. Confirm automatic mode stops at `agent_settled`; manual mode remains active.
+   Confirm Escape, `/caffeinate`, and tray activation remove the Pi status,
+   child process, and tray item, and that a second stop is harmless.
 5. Kill or interrupt the inhibitor process and confirm Pi clears stale UI/state
    and reports a useful warning rather than leaving a timer or tray export.
 6. Run the command in a session without a D-Bus watcher (for example under

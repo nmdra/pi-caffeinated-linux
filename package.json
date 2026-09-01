@@ -1,6 +1,6 @@
 {
-  "name": "pi-caffeinated",
-  "version": "0.1.2",
+  "name": "@nimendra/pi-caffeinated-linux",
+  "version": "0.0.1",
   "description": "Linux Pi extension that keeps the machine awake with systemd-inhibit and shows Pi and KDE status indicators.",
   "type": "module",
   "license": "MIT",
@@ -20,11 +20,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tanishqkancharla/pi-caffeinated.git"
+    "url": "git+https://github.com/nmdra/pi-caffeinated-linux.git"
   },
-  "homepage": "https://github.com/tanishqkancharla/pi-caffeinated#readme",
+  "homepage": "https://github.com/nmdra/pi-caffeinated-linux#readme",
   "bugs": {
-    "url": "https://github.com/tanishqkancharla/pi-caffeinated/issues"
+    "url": "https://github.com/nmdra/pi-caffeinated-linux/issues"
   },
   "engines": {
     "node": ">=18"
@@ -32,7 +32,8 @@
   "scripts": {
     "check": "tsc --noEmit",
     "test": "tsx --test test/*.test.ts",
-    "build": "echo 'pi loads this package directly via jiti; no build step required'"
+    "build": "echo 'pi loads this package directly via jiti; no build step required'",
+    "prepublishOnly": "npm run check && npm test"
   },
   "files": [
     "README.md",
@@ -59,5 +60,8 @@
     "extensions": [
       "./caffeinate.ts"
     ]
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

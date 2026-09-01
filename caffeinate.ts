@@ -18,10 +18,13 @@ import {
 const STATUS_TICK_MS = 1000;
 const STATUS_KEY = "caffeinate";
 
+type SessionMode = "auto" | "manual";
+
 type StopReason =
   | "command"
   | "escape"
   | "tray"
+  | "agent-settled"
   | "process-error"
   | "process-exit"
   | "session-shutdown"
@@ -39,6 +42,7 @@ type ActiveSession = {
   readonly context: ExtensionContext;
   readonly process: ChildProcess;
   readonly startTime: number;
+  readonly mode: SessionMode;
   readonly tray: TrayIndicator;
   statusTimer: ReturnType<typeof setInterval> | null;
   forceKillTimer: ReturnType<typeof setTimeout> | null;
@@ -70,6 +74,20 @@ function registerEscapeStop(
     void stop(session, "escape");
     return { consume: true };
   });
+}
+
+function registerAgentSettled(
+  pi: ExtensionRegistrationAPI,
+  handler: () => Promise<void>,
+): void {
+  // Pi 0.84+ exposes agent_settled. Keep the source compatible with older
+  // extension type packages while using the runtime event when available.
+  // SAFETY: Pi 0.84+ provides this event; the local peer types may lag it.
+  const on = pi.on as unknown as (
+    event: "agent_settled",
+    handler: () => Promise<void>,
+  ) => void;
+  on.call(pi, "agent_settled", handler);
 }
 
 function formatStyledAwakeStatus(
@@ -166,8 +184,18 @@ export function registerCaffeinate(
   }
 
   pi.registerCommand("caffeinate", {
-    description: "Toggle Linux caffeinate (keeps your machine awake)",
+    description: "Keep Linux awake until Pi settles; use /caffeinate manual for persistent mode",
     handler: async (_args, context) => {
+      const modeArg = _args.trim().toLowerCase();
+      if (modeArg !== "" && modeArg !== "auto" && modeArg !== "manual") {
+        context.ui.notify(
+          "Usage: /caffeinate [auto|manual]",
+          "warning",
+        );
+        return;
+      }
+      const mode: SessionMode = modeArg === "manual" ? "manual" : "auto";
+
       if (activeSession) {
         await stopSession(activeSession, "command");
         return;
@@ -210,6 +238,7 @@ export function registerCaffeinate(
         context,
         process: childProcess,
         startTime: Date.now(),
+        mode,
         tray,
         statusTimer: null,
         forceKillTimer: null,
@@ -262,6 +291,12 @@ export function registerCaffeinate(
 
       registerEscapeStop(session, stopSession);
     },
+  });
+
+  registerAgentSettled(pi, async () => {
+    if (activeSession?.mode === "auto") {
+      await stopSession(activeSession, "agent-settled");
+    }
   });
 
   if (runtime.registerProcessExit !== false) {

@@ -82,13 +82,17 @@ function createContext() {
 function createPi(
   onCommand: (handler: (_args: string, context: ExtensionContext) => Promise<void>) => void,
   onShutdown?: (handler: () => Promise<void>) => void,
+  onAgentSettled?: (handler: () => Promise<void>) => void,
 ) {
   return {
     registerCommand: (
       _name: string,
       definition: { handler: (_args: string, context: ExtensionContext) => Promise<void> },
     ) => onCommand(definition.handler),
-    on: (_event: string, handler: () => Promise<void>) => onShutdown?.(handler),
+    on: (event: string, handler: () => Promise<void>) => {
+      if (event === "session_shutdown") onShutdown?.(handler);
+      if (event === "agent_settled") onAgentSettled?.(handler);
+    },
   } as never;
 }
 
@@ -131,6 +135,65 @@ test("keeps the colored footer and tray synchronized across command stop", async
   assert.deepEqual(child.signals, ["SIGTERM"]);
 
   await shutdownHandler!();
+  assert.equal(tray.stopCount, 1);
+});
+
+test("auto mode stops when the agent settles", async () => {
+  let commandHandler:
+    | ((_args: string, context: ExtensionContext) => Promise<void>)
+    | undefined;
+  let settledHandler: (() => Promise<void>) | undefined;
+  const child = new FakeChild();
+  const tray = new FakeTray({});
+  const pi = createPi(
+    (handler) => {
+      commandHandler = handler;
+    },
+    undefined,
+    (handler) => {
+      settledHandler = handler;
+    },
+  );
+  const view = createContext();
+  registerCaffeinate(pi, createRuntime(child, tray));
+
+  const startPromise = commandHandler!("", view.context);
+  await new Promise((resolve) => setImmediate(resolve));
+  await settledHandler!();
+  await startPromise;
+
+  assert.equal(tray.stopCount, 1);
+  assert.deepEqual(child.signals, ["SIGTERM"]);
+  assert.equal(view.statuses.at(-1), undefined);
+});
+
+test("manual mode remains active after the agent settles", async () => {
+  let commandHandler:
+    | ((_args: string, context: ExtensionContext) => Promise<void>)
+    | undefined;
+  let settledHandler: (() => Promise<void>) | undefined;
+  const child = new FakeChild();
+  const tray = new FakeTray({});
+  const pi = createPi(
+    (handler) => {
+      commandHandler = handler;
+    },
+    undefined,
+    (handler) => {
+      settledHandler = handler;
+    },
+  );
+  const view = createContext();
+  registerCaffeinate(pi, createRuntime(child, tray));
+
+  const startPromise = commandHandler!("manual", view.context);
+  await new Promise((resolve) => setImmediate(resolve));
+  await settledHandler!();
+  assert.equal(tray.stopCount, 0);
+  assert.ok(view.statuses.at(-1)?.includes("[awake]"));
+
+  await commandHandler!("", view.context);
+  await startPromise;
   assert.equal(tray.stopCount, 1);
 });
 

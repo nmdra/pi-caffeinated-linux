@@ -1,11 +1,12 @@
-# pi-caffeinated
+# pi-caffeinated-linux
 
 A Linux-only Pi extension that keeps the machine awake with
 `systemd-inhibit`.
 
 ## Features
 
-- `/caffeinate` toggles a systemd inhibitor for idle and sleep actions
+- `/caffeinate` keeps the machine awake until the current Pi task settles
+- `/caffeinate manual` keeps it awake until you stop it yourself
 - Colored live Pi footer status: ` [awake] idle+sleep · <elapsed>`
 - Press `Esc` or run `/caffeinate` again to stop
 - KDE Plasma tray indicator through the StatusNotifierItem D-Bus protocol
@@ -33,7 +34,7 @@ available.
 ## Install
 
 ```sh
-pi install npm:pi-caffeinated
+pi install npm:@nimendra/pi-caffeinated-linux@0.0.1
 ```
 
 Restart Pi after installing or updating the extension.
@@ -43,8 +44,14 @@ Restart Pi after installing or updating the extension.
 Run the command inside Pi:
 
 ```text
-/caffeinate
+/caffeinate          # automatic: stop when the Pi task settles
+/caffeinate manual   # manual: stay active until stopped
 ```
+
+`/caffeinate` is also accepted as `/caffeinate auto`. Automatic mode stops
+when Pi has finished the agent response, tool calls, retries, compaction, and
+queued follow-up work. Manual mode remains active until `Esc`, `/caffeinate`,
+the KDE tray indicator, or Pi shutdown stops it.
 
 While active:
 
@@ -52,7 +59,7 @@ While active:
 - KDE Plasma shows an active coffee indicator in the system tray when a
   StatusNotifier host is available.
 
-Stop caffeinate with `Esc`, by running `/caffeinate` again, or by clicking the
+Stop either mode with `Esc`, by running `/caffeinate` again, or by clicking the
 KDE tray indicator.
 
 ## Diagnostics
