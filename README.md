@@ -32,7 +32,7 @@ The `idle` lock prevents automatic idle handling. The `sleep` lock prevents user
 ## Install
 
 ```sh
-pi install npm:@nimendra/pi-caffeinated-linux@0.0.1
+pi install npm:@nimendra/pi-caffeinated-linux
 ```
 
 Restart/Reload Pi after installing or updating the extension.
