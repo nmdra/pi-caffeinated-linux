@@ -7,16 +7,18 @@ A Linux-only Pi extension that keeps the machine awake with
 
 - `/caffeinate` keeps the machine awake until the current Pi task settles
 - `/caffeinate manual` keeps it awake until you stop it yourself
-- Colored live Pi footer status: ` [awake] idle+sleep · <elapsed>`
+- Colored live Pi footer status with a short random coffee quote, for example
+  ` [awake] Nap denied · <elapsed>`
 - Press `Esc` or run `/caffeinate` again to stop
 - KDE Plasma tray indicator through the StatusNotifierItem D-Bus protocol
-- Click the tray indicator to stop caffeinate
+- Click the tray indicator or choose **Stop keeping awake** from its menu
 - Cleans up the inhibitor and indicators when Pi shuts down
 
 ## Requirements
 
 - Pi coding agent extension runtime
 - Linux with `systemd-inhibit` available on `PATH`
+- Node.js 22.12 or newer
 - A D-Bus session bus for the optional KDE tray indicator
 
 The extension uses this systemd command:
@@ -55,12 +57,14 @@ the KDE tray indicator, or Pi shutdown stops it.
 
 While active:
 
-- Pi shows a colored ` [awake] idle+sleep · <elapsed>` status in the footer.
+- Pi shows a colored status such as ` [awake] Nap denied · <elapsed>` in the
+  footer. The quote is selected once when the session starts, so it does not
+  flicker every second.
 - KDE Plasma shows an active coffee indicator in the system tray when a
   StatusNotifier host is available.
 
-Stop either mode with `Esc`, by running `/caffeinate` again, or by clicking the
-KDE tray indicator.
+Stop either mode with `Esc`, by running `/caffeinate` again, by clicking the
+KDE tray indicator, or by choosing **Stop keeping awake** from its menu.
 
 ## Diagnostics
 
@@ -76,6 +80,37 @@ is not found, install the systemd package for your distribution. If the KDE
 tray indicator is unavailable, check that a user D-Bus session and a Plasma
 StatusNotifier host are running; the colored Pi footer status remains available
 without them.
+
+### Troubleshooting
+
+| Symptom                       | Check                                                                    | Action                                                                            |
+| ----------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| Footer status does not start  | `command -v systemd-inhibit`                                             | Install systemd or use a systemd-based Linux session.                             |
+| Inhibitor exits unexpectedly  | `systemd-inhibit --list`                                                 | Restart the command and check the reported exit reason.                           |
+| Stop reports a signal failure | Process permissions and `systemd-inhibit --list`                         | End the stale process manually if required, then restart Pi.                      |
+| Tray is unavailable           | `echo "$DBUS_SESSION_BUS_ADDRESS"`; check the Plasma StatusNotifier host | The footer and inhibitor still work; restore the user D-Bus session for the tray. |
+| Tray registration fails       | `qdbus6 --session`                                                       | Check the KDE/freedesktop StatusNotifierWatcher and retry Pi.                     |
+
+## Publishing
+
+Releases use npm Trusted Publishing from GitHub Actions. The package trusts
+repository `nmdra/pi-caffeinated-linux` and workflow
+`.github/workflows/release.yml`; no npm token is stored in GitHub. The publish
+job requests `id-token: write` and runs `npm publish --provenance --access
+public` with npm 11.15 or newer.
+
+To configure or inspect the connection as the package owner:
+
+```sh
+npm trust github @nimendra/pi-caffeinated-linux \
+  --repo nmdra/pi-caffeinated-linux \
+  --file release.yml \
+  --allow-publish
+npm trust list @nimendra/pi-caffeinated-linux
+```
+
+If a connection must be replaced, list its ID, revoke it, and create the new
+connection before merging a release PR.
 
 ## License
 

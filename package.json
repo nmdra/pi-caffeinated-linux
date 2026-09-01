@@ -4,7 +4,7 @@
   "description": "Linux Pi extension that keeps the machine awake with systemd-inhibit and shows Pi and KDE status indicators.",
   "type": "module",
   "license": "MIT",
-  "author": "Tanishq Kancharla",
+  "author": "NIMENDRA",
   "keywords": [
     "pi-package",
     "pi-extension",
@@ -27,7 +27,7 @@
     "url": "https://github.com/nmdra/pi-caffeinated-linux/issues"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22.12.0"
   },
   "scripts": {
     "check": "tsc --noEmit",
@@ -43,7 +43,7 @@
     "kde-status-notifier.ts"
   ],
   "dependencies": {
-    "dbus-next": "^0.10.2"
+    "dbus-native": "^0.15.2"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",

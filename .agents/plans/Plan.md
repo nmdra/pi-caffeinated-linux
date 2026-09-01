@@ -1,261 +1,230 @@
-# Plan: Linux-only caffeinate with Pi and KDE indicators
+# Plan: Secure and harden pi-caffeinated-linux 0.0.2
 
 ## Goal
 
-Turn this fork into a Linux-only Pi extension that keeps the machine awake with
-`systemd-inhibit`, reports the exact inhibited state in Pi, replaces the large
-modal with a tiny animated ASCII coffee cup in Pi's top-right corner, and
-publishes an active KDE-compatible session-bus tray item. The inhibitor, Pi
-status, Pi indicator, and tray item must start and stop together.
+Ship a reliable `0.0.2` release of the Linux-only Pi extension: replace the
+vulnerable `dbus-next` D-Bus stack with pure-JavaScript `dbus-native`, make
+shutdown and diagnostics dependable, improve tray accessibility and tests,
+correct the npm author to **NIMENDRA**, and make the next release publish with
+npm Trusted Publishing and provenance.
 
 ## Current State
 
-- `caffeinate.ts:getAwakeCommand()` currently defines macOS, Linux, Windows, and
-  unsupported-platform branches (`caffeinate.ts:49-95`). The Linux command is
-  already `systemd-inhibit --what=idle:sleep ... sleep infinity`
-  (`caffeinate.ts:58-71`).
-- `isExecutableAvailable()` contains Windows-only `PATHEXT` and extension logic
-  (`caffeinate.ts:97-118`), and `kill()` has separate Windows signal paths
-  (`caffeinate.ts:413-434`).
-- The command currently creates a large centered, input-capturing custom overlay
-  (`caffeinate.ts:491-516`). `CaffeinateComponent` owns the animated artwork and
-  timer (`caffeinate.ts:201-405`).
-- The current footer status is only `"☕ caffeinated"` and is cleared from some
-  process/error/close paths (`caffeinate.ts:473-500`); it does not show elapsed
-  time or whether `idle` and `sleep` are inhibited.
-- Process-exit/error handlers clear process state but do not consistently close
-  the custom UI or dispose its timer (`caffeinate.ts:473-487`). The custom UI
-  completion path also only nulls `activeComponent` after returning
-  (`caffeinate.ts:517`). The refactor must make all shutdown paths idempotent.
-- `package.json` describes a cross-platform extension, contains `macos` and
-  `windows` keywords, has no Linux package restriction, and ships only
-  `caffeinate.ts` (`package.json:4-15`, `package.json:32-50`).
-- `README.md` documents macOS, Linux, and Windows backends and shows the old
-  centered-modal behavior (`README.md:5-24`, `README.md:42-47`). There is no test
-  directory or test script.
-- Planning-time host checks found `XDG_CURRENT_DESKTOP=KDE`,
-  `/usr/bin/systemd-inhibit`, `/usr/bin/systemctl`, and `/usr/bin/qdbus6`.
-  The session bus currently exposes `org.kde.StatusNotifierWatcher` and a
-  `org.kde.StatusNotifierHost`, so KDE StatusNotifierItem integration is
-  testable on this host.
+- `package.json` declares `dbus-next@^0.10.2` as the only runtime dependency
+  and has an incorrect author value (`package.json:7`, `package.json:45-47`).
+  `npm audit --omit=dev` reports 10 production findings, including 3 critical,
+  through `dbus-next → usocket → node-gyp → request/tar`.
+- The tray service uses `dbus-next` to claim a name, export KDE and
+  freedesktop StatusNotifierItem interfaces, register with a watcher, and emit
+  property signals (`kde-status-notifier.ts:1-6`, `:404-456`, `:563-586`).
+- The active-session finalizer clears timers/listeners/status, terminates the
+  inhibitor, and awaits tray cleanup (`caffeinate.ts:130-175`). However, the
+  `process.exit` listener starts that asynchronous finalizer without being able
+  to await it (`caffeinate.ts:302-305`).
+- `terminateProcess()` does not distinguish a failed `ChildProcess.kill()`
+  result from a sent signal (`linux-awake.ts:50-64`).
+- The release workflow already requests `id-token: write` and runs
+  `npm publish --provenance`, but the npm trusted-publisher configuration has
+  not been created (`.github/workflows/release.yml:27-56`). The `0.0.1` publish
+  workflow therefore failed with `ENEEDAUTH`.
+- The current tests use injectable child-process, Pi UI, tray, and fake D-Bus
+  seams (`test/caffeinate.test.ts`, `test/kde-status-notifier.test.ts`), but do
+  not cover pending tray startup races or process-signal cleanup.
 
-External constraints and evidence:
+External evidence:
 
-- systemd defines `idle` and `sleep` inhibitor types and documents
-  `systemd-inhibit --list` plus the `Inhibit()`/`ListInhibitors()` model:
-  <https://systemd.io/INHIBITOR_LOCKS/>
-  and <https://freedesktop.org/software/systemd/man/latest/systemd-inhibit.html>.
-- Pi's TUI supports custom components whose rendered lines must fit the supplied
-  width, and overlay options include `anchor: "top-right"`, margins, dynamic
-  sizing, and `nonCapturing`:
-  <https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/tui.md>
-  and <https://github.com/badlogic/pi-mono/blob/main/packages/tui/README.md>.
-- Pi's extension API supports persistent footer status, raw terminal-input
-  listeners, and custom UI components; custom components are appropriate for
-  TUI mode, while status APIs can be used independently:
-  <https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/extensions.md>
-  and <https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/src/core/extensions/types.ts>.
-- The StatusNotifierItem specification defines `Status`, `IconName`,
-  `IconPixmap`, `ToolTip`, activation methods, and update signals; the watcher
-  requires `RegisterStatusNotifierItem`:
-  <https://specifications.freedesktop.org/status-notifier-item/latest/status-notifier-item.html>
-  and <https://freedesktop.org/wiki/Specifications/StatusNotifierItem/StatusNotifierWatcher/>.
-- KDE Plasma consumes both `org.kde.StatusNotifierItem` and
-  `org.freedesktop.StatusNotifierItem` properties/methods and understands the
-  no-menu sentinel used by Plasma:
-  <https://github.com/KDE/plasma-workspace/blob/master/applets/systemtray/statusnotifieritemsource.cpp>.
-- `dbus-next` provides Node session-bus clients/services, `requestName()`,
-  `export()`, `unexport()`, and typed D-Bus interfaces:
-  <https://github.com/dbusjs/node-dbus-next>.
+- `dbus-native@0.15.2` is a pure-JavaScript D-Bus client/server with service
+  export support, requires Node `>=22.12.0`, and has only `xml2js` as a runtime
+  dependency: <https://sidorares.github.io/dbus-native/> and
+  <https://www.npmjs.com/package/dbus-native>.
+- A clean temporary install of `dbus-native@0.15.2` produced 0 runtime audit
+  findings; the package lock contained 3 transitive runtime packages.
+- npm Trusted Publishing requires a configured repository and workflow, a
+  cloud-hosted GitHub Actions runner, and `id-token: write`; public GitHub
+  packages published that way receive provenance automatically:
+  <https://docs.npmjs.com/trusted-publishers/> and
+  <https://docs.npmjs.com/generating-provenance-statements/>.
 
 ## Decisions
 
-1. **Linux backend:** Keep only the systemd-based Linux backend and describe
-   failure to find `systemd-inhibit` clearly. Remove macOS, Windows, and
-   generic unsupported-platform branches from source rather than retaining
-   dead compatibility code. Add the npm `os: ["linux"]` declaration. Non-systemd
-   Linux remains unsupported and must fail with an actionable warning.
-2. **Pi placement:** Use a `nonCapturing` custom overlay anchored at
-   `top-right`, with a fixed small width and one short ASCII cup frame. This is
-   the only supported Pi UI primitive that places a persistent animated item at
-   that corner without replacing the editor/footer. Preserve Escape-to-stop with
-   a temporary `ctx.ui.onTerminalInput()` listener because a non-capturing
-   overlay does not receive keyboard focus; the normal `/caffeinate` command
-   remains a second stop control.
-3. **Pi status text:** Replace the ambiguous static label with the exact live
-   status `[awake] idle+sleep · <elapsed>`. Update it from the same active-session
-   clock as the cup and clear it on every stop/error/shutdown path.
-4. **KDE tray protocol:** Implement a small `KdeStatusNotifier` using
-   `dbus-next` on the user session bus. Export one `/StatusNotifierItem` object
-   with both `org.kde.StatusNotifierItem` and
-   `org.freedesktop.StatusNotifierItem` interfaces, register it with the KDE
-   watcher first and the freedesktop watcher as fallback, and use
-   `Status=Active`, `Category=SystemServices`, a stable ID/title, an icon name
-   plus a small `IconPixmap` fallback, and a tooltip containing the inhibited
-   state and elapsed time. Left-click activation stops caffeinate. No DBusMenu
-   dependency is needed; `ContextMenu` is a no-op and `Menu` uses Plasma's
-   `/NO_DBUSMENU` convention.
-5. **Graceful degradation:** Failure to connect to a session bus, find a
-   watcher, claim the item name, or update the tray must never stop the
-   systemd inhibitor or break the Pi indicator/status. Report tray-unavailable
-   once in interactive mode and continue. Do not call KDE's private PowerDevil
-   policy API; the standard StatusNotifierItem protocol is the desktop-facing
-   contract, while `systemd-inhibit --list` remains the diagnostic source of
-   truth.
-6. **Lifecycle contract:** Centralize stop/finalization so command toggle,
-   Escape, tray activation, child `error`, child `exit`, custom-overlay close,
-   session shutdown, and process exit all converge on one idempotent cleanup
-   path. The path must dispose timers/listeners, resolve the custom UI exactly
-   once, release the tray item, clear status, and terminate the child without
-   duplicate signals.
+1. **D-Bus library:** Replace `dbus-next` with `dbus-native@^0.15.2`. Preserve
+   the existing StatusNotifierItem contract—both KDE and freedesktop
+   interfaces, KDE watcher then freedesktop fallback, pixmaps, tooltip updates,
+   and click-to-stop—but adapt it behind the existing `KdeStatusNotifier` API.
+   Do not use a native addon because Pi extensions must remain installable with
+   `pi install` and no compiler or system development headers.
+2. **Runtime baseline:** Raise the package Node engine to `>=22.12.0`, matching
+   the selected D-Bus library. Pi instances below that version must fail at
+   install time rather than loading an incompatible extension.
+3. **Shutdown contract:** Treat `session_shutdown` as the awaited normal Pi
+   cleanup path. For host termination, handle `SIGINT` and `SIGTERM` with a
+   bounded cleanup path and retain `exit` only for synchronous best-effort
+   child signalling; never promise asynchronous D-Bus cleanup from `exit`.
+4. **Footer status:** Keep the technical inhibitor details in diagnostics and
+   the tray tooltip, but show one short randomly selected coffee quote in the
+   colored Pi footer for each active session. Select it once at startup so the
+   status does not flicker on its one-second elapsed-time updates.
+5. **Diagnostics:** User-facing warnings remain one-time and non-fatal for
+   optional tray support, but include the failed stage and concise cause.
+   Inhibitor termination returns structured signal results so permission/PID
+   failures are not reported as successful cleanup.
+6. **Accessibility:** Retain `/caffeinate` and Escape as keyboard stop
+   controls and add a minimal standard D-Bus menu containing a labelled
+   **Stop keeping awake** action for assistive/tray-menu users.
+7. **Release:** npm Trusted Publishing is the only automated publish mechanism.
+   No long-lived npm token is stored in GitHub. The local publish route remains
+   an emergency operator procedure, not the release workflow.
 
 ## Scope
 
 In scope:
 
-- Linux-only source, package metadata, README, and generated lockfile updates.
-- `systemd-inhibit` availability/error handling and accurate `idle+sleep`
-  wording.
-- A small animated Pi TUI indicator in the top-right and a live Pi footer
-  status.
-- KDE/freedesktop StatusNotifierItem registration, tooltip, icon fallback,
-  click-to-stop, and cleanup.
-- Unit/integration seams for backend arguments, rendering, lifecycle, and D-Bus
-  behavior, plus live KDE verification commands.
+- The `dbus-native` migration and its Node compatibility boundary.
+- Lifecycle, structured diagnostics, D-Bus menu accessibility, tests, CI, npm
+  metadata, release configuration, and release documentation.
+- A `0.0.2` release after all verification gates pass.
 
 Intentionally out of scope:
 
-- Supporting macOS, Windows, non-systemd Linux, or a second keep-awake backend.
-- A Plasma widget, PowerDevil plugin, desktop notification daemon integration,
-  or a full DBusMenu context menu.
-- Renaming the npm package or changing fork ownership/provenance URLs.
-- Manually deleting transitive macOS/Windows optional packages from
-  `package-lock.json`; those are owned by Pi's upstream dependency graph. The
-  source-owned runtime and npm metadata will contain no cross-platform support,
-  and Linux installs will be verified separately.
+- macOS, Windows, non-systemd Linux, alternate awake backends, and a full KDE
+  Plasma widget.
+- A graphical configuration UI or a multi-action tray menu.
+- Changing the published `0.0.1` artifact or its immutable provenance state.
 
 ## Tasks
 
-- [x] **Task 1: Define the Linux package/runtime contract.** Move `dbus-next`
-  to production `dependencies`, add `os: ["linux"]`, remove cross-platform
-  keywords, include the new runtime modules in the published `files` list, and
-  regenerate the lockfile rather than hand-editing transitive entries.
+- [x] **Task 1: Establish the new package/runtime contract.** Replace
+  `dbus-next` with `dbus-native@^0.15.2`, set `engines.node` to `>=22.12.0`,
+  change `author` to `NIMENDRA`, regenerate `package-lock.json`, and verify the
+  packed artifact excludes test and planning files.
   **Files:** `package.json`, `package-lock.json`.
-  **Seam:** npm package metadata and dependency installation.
-  **Verify:** `npm install --package-lock-only`; `npm pack --dry-run`; inspect
-  the packed file list and root lock metadata; confirm `dbus-next` is a runtime
-  dependency and `os` is Linux-only.
+  **Seam:** npm metadata, lockfile, and `npm pack` file allowlist.
+  **Verify:** `npm ci && npm audit --omit=dev && npm pack --dry-run`; inspect
+  `npm view`-equivalent local metadata and assert the packed list contains only
+  `package.json`, `README.md`, `LICENSE`, and the runtime `.ts` files.
 
-- [x] **Task 2: Isolate the Linux inhibitor backend.** Create a Linux-only
-  backend module exporting the fixed `systemd-inhibit` command, its accurate
-  user-facing description, POSIX `PATH` lookup, and SIGTERM/SIGKILL cleanup.
-  Remove `darwin`, `win32`, PowerShell, `PATHEXT`, Windows path extension, and
-  unsupported-platform branches from `caffeinate.ts`. Keep the command args
-  exactly `--what=idle:sleep`, `--who=pi-caffeinated`, `--why=Keeping the machine
-  awake from Pi`, `--mode=block`, `sleep`, `infinity`.
-  **Files:** `linux-awake.ts` (new), `caffeinate.ts`.
-  **Seam:** exported command configuration and injected child-process
-  lifecycle.
-  **Verify:** unit-test the exact command/args and missing/executable `PATH`
-  cases; `grep` source and README for `darwin`, `win32`, `powershell`, and
-  `PATHEXT`; `npm run check`.
+- [x] **Task 2: Port the StatusNotifier transport to dbus-native.** Replace
+  the `dbus-next` imports and interface-class implementation with
+  `dbus-native`'s interface definition/service export API. Preserve exported
+  KDE and freedesktop StatusNotifierItem interfaces at `/StatusNotifierItem`,
+  the current properties/pixmaps, `Activate`, signals/property-change events,
+  the `/Menu` property, and KDE-first/freedesktop-fallback watcher registration.
+  Add a standard exported DBusMenu object and route its single
+  `Stop keeping awake` item to `onActivate`.
+  **Files:** `kde-status-notifier.ts`, `test/kde-status-notifier.test.ts`.
+  **Seam:** `KdeStatusNotifierOptions.busFactory` and a transport-neutral fake
+  bus/menu adapter.
+  **Verify:** `npm run check && npm test`; in a KDE session, start Pi,
+  `/caffeinate manual`, inspect the service with `qdbus6 --session`, confirm
+  Plasma shows the icon and labelled menu action, and confirm both click and
+  menu action stop the inhibitor.
 
-- [x] **Task 3: Keep the Pi UI compact and non-blocking.** Remove the large
-  modal and the later overlay animation entirely. Keep Escape available through
-  the raw terminal-input listener, and render the colored awake message in the
-  persistent Pi footer instead of a custom component.
-  **Files:** `caffeinate.ts`, removed `pi-indicator.ts`.
-  **Seam:** `ctx.ui.setStatus()` plus the existing Escape listener.
-  **Verify:** confirm the footer fits normal terminal widths and the editor is
-  never replaced or covered by an overlay.
+- [x] **Task 3: Make inhibitor termination observable and correct.** Replace
+  `terminateProcess()`'s nullable-timer return with a structured result that
+  records whether SIGTERM was sent, whether escalation was scheduled, and any
+  synchronous signal-delivery error or false-return failure. Have the session
+  finalizer notify only when a user-initiated stop cannot signal the inhibitor;
+  clear an escalation timer on child exit as it does today.
+  **Files:** `linux-awake.ts`, `caffeinate.ts`, `test/linux-awake.test.ts`,
+  `test/caffeinate.test.ts`.
+  **Seam:** injected `ChildProcess.kill()` behavior.
+  **Verify:** test successful TERM, failed `kill() === false`, thrown kill,
+  exited child, and TERM-to-KILL escalation; run `npm run check && npm test`.
 
-- [x] **Task 4: Add the KDE StatusNotifierItem service.** Implement
-  `KdeStatusNotifier` with a bus adapter seam. Lazily connect to the session
-  bus on activation, claim a unique
-  `org.freedesktop.StatusNotifierItem-<pid>-1` name, export
-  `/StatusNotifierItem` under both KDE and freedesktop item interfaces, and
-  register with `org.kde.StatusNotifierWatcher` or the freedesktop watcher
-  fallback. Expose `Id`, `Title`, `Category`, `Status`, `IconName`, an
-  `a(iiay)` pixmap fallback, `ToolTip`, `Menu=/NO_DBUSMENU`, and the required
-  activation/context/scroll methods and update signals. Emit tooltip/status
-  changes only when their values change. Wire `Activate` to the shared stop
-  callback; make all D-Bus failures non-fatal.
-  **Files:** `kde-status-notifier.ts` (new), `package.json`,
-  `package-lock.json`.
-  **Seam:** `KdeStatusNotifier` lifecycle plus injected session-bus adapter.
-  **Verify:** unit-test registration, property values, changed-property
-  signals, activation, and idempotent release using a fake adapter; on KDE,
-  use `qdbus6 --session`/`qdbus6 --literal` to inspect the registered service
-  and verify it appears in the Plasma tray.
+- [x] **Task 4: Harden host termination semantics.** Extract finalization into
+  explicit awaited and synchronous phases. Register `SIGINT`/`SIGTERM` handlers
+  that stop the active inhibitor and tray within a bounded cleanup interval,
+  then restore/forward termination without recursive signal handling. Keep
+  `session_shutdown` as the primary awaited Pi lifecycle path; make the `exit`
+  handler perform only synchronous best-effort process signalling and status
+  teardown.
+  **Files:** `caffeinate.ts`, `test/caffeinate.test.ts`.
+  **Seam:** `CaffeinateRuntime` gains injectable process-signal registration
+  and timer functions so signal behavior is testable without terminating the
+  test runner.
+  **Verify:** tests assert each handler is registered once, cleanup is
+  idempotent, the child is signalled once, and no rejected cleanup promise is
+  produced; manually interrupt a Pi session with an active manual inhibitor and
+  verify `systemd-inhibit --list` no longer lists `pi-caffeinated`.
 
-- [x] **Task 5: Wire one active-session state machine to all indicators.** Refactor
-  the command handler around one active state containing the child process,
-  start time, mode (`auto` or `manual`), Escape-listener unsubscribe, and tray
-  instance. Set the colored awake status immediately after spawn, update the
-  footer and tray tooltip from the shared clock, and clear everything through
-  one idempotent finalizer. Make `/caffeinate` default to auto cleanup at
-  `agent_settled`; keep `/caffeinate manual` persistent until an explicit stop.
-  Preserve Escape, tray activation, process error/exit, session shutdown, and
-  host process exit semantics without TUI-only custom components.
-  **Files:** `caffeinate.ts`, `kde-status-notifier.ts`.
-  **Seam:** command handler with mocked `spawn()` and mocked `ctx.ui`/D-Bus
-  adapter.
-  **Verify:** integration tests cover auto settle, manual persistence, second-
-  command stop, Escape stop, tray-click stop, unexpected child exit, spawn
-  error, and session shutdown; confirm each path calls cleanup once and leaves
-  no status, listener, timer, process, or bus export behind.
+- [x] **Task 5: Improve tray and inhibitor diagnostics.** Introduce typed
+  diagnostic stages (`connect`, `claim-name`, `export`, `register-kde-watcher`,
+  `register-freedesktop-watcher`, `update`, `release`) and format one concise
+  UI warning with stage/cause while retaining non-fatal tray behavior. Add
+  actionable inhibitor-exit text that directs users to `systemd-inhibit --list`
+  and relevant session-bus checks.
+  **Files:** `kde-status-notifier.ts`, `caffeinate.ts`, `README.md`,
+  `test/kde-status-notifier.test.ts`, `test/caffeinate.test.ts`.
+  **Seam:** notifier `onError` callback and fake bus failures at each phase.
+  **Verify:** tests simulate both watcher failures, bus errors after startup,
+  and property-update failures; assert one user warning contains its stage and
+  the inhibitor/footer remains active.
 
-- [x] **Task 6: Add automated checks and test commands.** Add a lightweight
-  TypeScript test runner and tests for Linux backend configuration, elapsed/status
-  formatting, colored footer behavior, D-Bus contract, and lifecycle cleanup.
-  Keep tests independent of a real KDE session bus; reserve the live tray check
-  for the verification procedure.
-  **Files:** `test/linux-awake.test.ts` (new),
-  `test/kde-status-notifier.test.ts` (new), `test/caffeinate.test.ts` (new),
-  `package.json`, `package-lock.json`.
-  **Seam:** public pure helpers, fake child process, fake UI, and fake D-Bus
-  transport.
-  **Verify:** `npm run check && npm test`; all tests pass without KDE or
-  `systemd-inhibit` mocks leaking into the host.
+- [x] **Task 6: Expand concurrency and end-to-end coverage.** Add deferred
+  fake-bus/fake-tray tests for stop during watcher registration, bus failure
+  during active use, repeated concurrent `start()`/`stop()`, and child exit
+  while tray startup is pending. Add a Linux integration script that launches
+  the actual `systemd-inhibit` command, checks it appears in
+  `systemd-inhibit --list`, terminates it, and confirms it disappears; skip
+  with an explicit reason if logind is unavailable in CI.
+  **Files:** `test/kde-status-notifier.test.ts`, `test/caffeinate.test.ts`,
+  `test/systemd-inhibit.integration.test.ts` (new), `package.json`.
+  **Seam:** existing fake bus/child factories and the exported
+  `LINUX_AWAKE_COMMAND`.
+  **Verify:** `npm test`; run the integration test on a systemd/logind Linux
+  host and confirm no exported bus object, claimed name, status timer, or child
+  survives each race.
 
-- [x] **Task 7: Rewrite documentation for Linux/KDE behavior.** Remove the old
-  macOS/Windows table, stale centered-overlay screenshot and wording, and
-  “one supported backend” language. Document the systemd requirement, exact
-  `idle+sleep` semantics, automatic/manual modes, colored Pi footer status,
-  Escape and command/tray stop controls, KDE session-bus tray behavior,
-  graceful tray fallback, and diagnostics with `systemd-inhibit --list`.
-  **Files:** `README.md`.
-  **Seam:** user-visible install, usage, requirements, and troubleshooting
-  documentation.
-  **Verify:** read the rendered Markdown for consistency with package metadata;
-  confirm every command and indicator described is covered by the automated or
-  live verification steps.
+- [x] **Task 7: Add a pull-request quality workflow.** Create a separate CI
+  workflow for pull requests and pushes to `main` that uses Node 22.12+, runs
+  `npm ci`, typecheck, tests, `npm pack --dry-run`, and a production audit gate.
+  Keep the release workflow focused on release-please and publishing.
+  **Files:** `.github/workflows/ci.yml` (new), `.github/workflows/release.yml`,
+  `README.md`.
+  **Seam:** GitHub Actions workflow commands and package scripts.
+  **Verify:** `actionlint .github/workflows/*.yml`; inspect a successful GitHub
+  Actions CI run for a branch/PR and confirm audit is zero for runtime deps.
+
+- [ ] **Task 8: Configure and prove npm Trusted Publishing.** In npm package
+  settings, create the GitHub Actions trusted publisher for repository
+  `nmdra/pi-caffeinated-linux`, workflow `.github/workflows/release.yml`, and
+  environment `main`/the default workflow context required by npm. Preserve
+  `id-token: write` and `npm publish --provenance --access public`; do not add
+  `NODE_AUTH_TOKEN`. Document the configuration and recovery procedure.
+  **Files:** `.github/workflows/release.yml`, `README.md`,
+  `.agents/plans/Plan.md`.
+  **Seam:** npm package trusted-publisher configuration and the `publish` job.
+  **Verify:** trigger the `0.0.2` release, confirm the publish job succeeds
+  without npm credentials, then run
+  `npm view @nimendra/pi-caffeinated-linux@0.0.2 dist.integrity --json`, inspect
+  npm provenance, and install in a clean Pi profile with
+  `pi install npm:@nimendra/pi-caffeinated-linux@0.0.2`.
+
+- [ ] **Task 9: Release and document 0.0.2.** Update README requirements to
+  Node 22.12+, document the tray menu and troubleshooting table, add release
+  notes through release-please, merge the release PR, and verify installation
+  plus the auto/manual lifecycle from the registry artifact.
+  **Files:** `README.md`, `CHANGELOG.md` (release-please generated),
+  `.release-please-manifest.json` (release-please generated).
+  **Seam:** published npm package entry point and Pi command registration.
+  **Verify:** clean-profile `pi install`, `pi list`, `/caffeinate` automatic
+  stop at `agent_settled`, `/caffeinate manual` persistence, Escape/command/
+  tray-menu stop, and `systemd-inhibit --list` before and after cleanup.
 
 ## Verification
 
-1. Run `npm install`, then `npm run check && npm test` from a clean checkout.
-2. Run `npm pack --dry-run` and verify the package contains the Linux entrypoint
-   and runtime modules, includes `dbus-next`, and does not advertise non-Linux
-   support.
-3. In this KDE session, load the extension in Pi and run `/caffeinate`:
-   - Pi shows the colored ` [awake] idle+sleep · <elapsed>` footer status;
-     automatic mode stops after `agent_settled`.
-   - `systemd-inhibit --list` shows a `pi-caffeinated` block entry for
-     `idle:sleep`.
-   - `qdbus6 --session` shows the new StatusNotifierItem service, and Plasma
-     shows the active tray item with the matching tooltip.
-4. Confirm automatic mode stops at `agent_settled`; manual mode remains active.
-   Confirm Escape, `/caffeinate`, and tray activation remove the Pi status,
-   child process, and tray item, and that a second stop is harmless.
-5. Kill or interrupt the inhibitor process and confirm Pi clears stale UI/state
-   and reports a useful warning rather than leaving a timer or tray export.
-6. Run the command in a session without a D-Bus watcher (for example under
-   `dbus-run-session` without Plasma) and confirm the Linux inhibitor and Pi
-   status still work while only the tray indicator is skipped.
-7. Verify `session_shutdown` and Pi process exit release the inhibitor and bus
-   name; `systemd-inhibit --list` must no longer contain the extension entry.
+1. `npm ci && npm run check && npm test` passes on Node 22.12+.
+2. `npm audit --omit=dev` reports zero runtime vulnerabilities.
+3. `npm pack --dry-run` includes only intended runtime/doc files and declares
+   author `NIMENDRA`, Linux-only OS support, Node `>=22.12.0`, and
+   `dbus-native`—not `dbus-next`.
+4. On KDE, the service registers with a watcher, displays the pixmap/tooltip,
+   and exposes both click and labelled menu stopping controls.
+5. All cleanup paths leave no active systemd inhibitor, D-Bus name/export,
+   footer status, terminal-input listener, or timer.
+6. GitHub CI passes and the release job publishes `0.0.2` through OIDC with npm
+   provenance. A clean Pi installation loads the package from npm.
 
 ## Open Questions
 
-None. The requested scope is both Pi-side indicators and KDE-compatible
-StatusNotifierItem integration, with the existing systemd-based Linux backend.
+None. `dbus-native@^0.15.2` and Node `>=22.12.0` are approved for this release.

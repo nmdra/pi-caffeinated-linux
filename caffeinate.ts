@@ -1,6 +1,9 @@
 /** /caffeinate — keep a Linux machine awake with systemd-inhibit. */
 
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import { matchesKey } from "@earendil-works/pi-tui";
 import { spawn, type ChildProcess } from "node:child_process";
 import {
@@ -8,10 +11,12 @@ import {
   formatTrayTooltip,
   isExecutableAvailable,
   LINUX_AWAKE_COMMAND,
+  selectAwakeQuote,
   terminateProcess,
 } from "./linux-awake.js";
 import {
   KdeStatusNotifier,
+  type KdeStatusNotifierDiagnostic,
   type KdeStatusNotifierOptions,
 } from "./kde-status-notifier.js";
 
@@ -28,20 +33,34 @@ type StopReason =
   | "process-error"
   | "process-exit"
   | "session-shutdown"
+  | "process-signal"
   | "process-exit-hook";
 
+type ProcessSignal = "SIGINT" | "SIGTERM";
+type ProcessSignalHandler = () => void;
 type TrayIndicator = Pick<KdeStatusNotifier, "start" | "update" | "stop">;
 
 export type CaffeinateRuntime = {
   spawnProcess?: typeof spawn;
   createTray?: (options: KdeStatusNotifierOptions) => TrayIndicator;
   registerProcessExit?: boolean;
+  registerProcessSignals?: boolean;
+  registerSignal?: (
+    signal: ProcessSignal,
+    handler: ProcessSignalHandler,
+  ) => void | (() => void);
+  sendSignal?: (signal: ProcessSignal) => void;
+  setTimeout?: typeof setTimeout;
+  clearTimeout?: typeof clearTimeout;
+  signalCleanupTimeoutMs?: number;
 };
 
 type ActiveSession = {
   readonly context: ExtensionContext;
   readonly process: ChildProcess;
+  readonly processExitPromise: Promise<void>;
   readonly startTime: number;
+  readonly quote: string;
   readonly mode: SessionMode;
   readonly tray: TrayIndicator;
   statusTimer: ReturnType<typeof setInterval> | null;
@@ -94,12 +113,13 @@ function formatStyledAwakeStatus(
   context: ExtensionContext,
   startTime: number,
   now: number,
+  quote: string,
 ): string {
   const theme = context.ui.theme;
   return [
     theme.fg("accent", "\uec15"),
     theme.fg("success", "[awake]"),
-    theme.fg("muted", "idle+sleep"),
+    theme.fg("muted", quote),
     theme.fg("dim", `· ${formatElapsed(startTime, now)}`),
   ].join(" ");
 }
@@ -118,7 +138,12 @@ export function registerCaffeinate(
     const now = Date.now();
     session.context.ui.setStatus(
       STATUS_KEY,
-      formatStyledAwakeStatus(session.context, session.startTime, now),
+      formatStyledAwakeStatus(
+        session.context,
+        session.startTime,
+        now,
+        session.quote,
+      ),
     );
     session.tray.update({
       tooltip: formatTrayTooltip(session.startTime, now),
@@ -126,41 +151,55 @@ export function registerCaffeinate(
     });
   }
 
-  async function stopSession(
+  function prepareSessionStop(
     session: ActiveSession,
     reason: StopReason,
-  ): Promise<void> {
-    if (session.cleanupPromise) return session.cleanupPromise;
+  ): void {
+    if (session.finalized) return;
 
     session.finalized = true;
     if (activeSession === session) activeSession = null;
 
-    session.cleanupPromise = (async () => {
-      if (session.statusTimer) {
-        clearInterval(session.statusTimer);
-        session.statusTimer = null;
-      }
-      if (session.forceKillTimer) {
-        clearTimeout(session.forceKillTimer);
-        session.forceKillTimer = null;
-      }
-      if (session.unsubscribeEscape) {
-        session.unsubscribeEscape();
-        session.unsubscribeEscape = null;
-      }
+    if (session.statusTimer) {
+      clearInterval(session.statusTimer);
+      session.statusTimer = null;
+    }
+    if (session.forceKillTimer) {
+      clearTimeout(session.forceKillTimer);
+      session.forceKillTimer = null;
+    }
+    if (session.unsubscribeEscape) {
+      session.unsubscribeEscape();
+      session.unsubscribeEscape = null;
+    }
 
-      try {
-        session.forceKillTimer = terminateProcess(session.process);
-      } catch (error) {
-        if (reason !== "process-exit" && reason !== "process-exit-hook") {
+    const termination = terminateProcess(session.process, 500, {
+      onError: (error) => {
+        if (shouldNotifyStop(reason) && session.context.hasUI) {
           session.context.ui.notify(
             `Could not stop systemd-inhibit: ${errorMessage(error)}`,
             "warning",
           );
         }
-      }
+      },
+    });
+    session.forceKillTimer = termination.forceKillTimer;
+    session.context.ui.setStatus(STATUS_KEY, undefined);
+  }
 
-      session.context.ui.setStatus(STATUS_KEY, undefined);
+  function stopSessionSync(session: ActiveSession): void {
+    prepareSessionStop(session, "process-exit-hook");
+  }
+
+  async function stopSession(
+    session: ActiveSession,
+    reason: StopReason,
+  ): Promise<void> {
+    if (session.cleanupPromise) return session.cleanupPromise;
+    if (session.finalized) return;
+
+    prepareSessionStop(session, reason);
+    const cleanupPromise = (async () => {
       try {
         await session.tray.stop();
       } catch (error) {
@@ -171,27 +210,44 @@ export function registerCaffeinate(
         session.context.ui.notify(stopMessage(reason), "info");
       }
     })();
-
-    return session.cleanupPromise;
+    session.cleanupPromise = cleanupPromise;
+    return cleanupPromise;
   }
 
-  function reportTrayError(context: ExtensionContext, error: unknown): void {
+  function reportTrayError(
+    context: ExtensionContext,
+    diagnosticOrError: KdeStatusNotifierDiagnostic | unknown,
+  ): void {
     if (!context.hasUI) return;
+
+    const isDiagnostic = (
+      value: unknown,
+    ): value is KdeStatusNotifierDiagnostic => {
+      if (!value || typeof value !== "object") return false;
+      // SAFETY: Object values with a string stage and error property are the
+      // diagnostic shape emitted by KdeStatusNotifier.
+      const candidate = value as Record<string, unknown>;
+      return typeof candidate.stage === "string" && "error" in candidate;
+    };
+    const stage = isDiagnostic(diagnosticOrError)
+      ? diagnosticOrError.stage
+      : "connect";
+    const error = isDiagnostic(diagnosticOrError)
+      ? diagnosticOrError.error
+      : diagnosticOrError;
     context.ui.notify(
-      `KDE tray indicator unavailable; caffeinate is still active (${errorMessage(error)})`,
+      `KDE tray indicator unavailable (${stage}: ${errorMessage(error)}); caffeinate is still active`,
       "warning",
     );
   }
 
   pi.registerCommand("caffeinate", {
-    description: "Keep Linux awake until Pi settles; use /caffeinate manual for persistent mode",
+    description:
+      "Keep Linux awake until Pi settles; use /caffeinate manual for persistent mode",
     handler: async (_args, context) => {
       const modeArg = _args.trim().toLowerCase();
       if (modeArg !== "" && modeArg !== "auto" && modeArg !== "manual") {
-        context.ui.notify(
-          "Usage: /caffeinate [auto|manual]",
-          "warning",
-        );
+        context.ui.notify("Usage: /caffeinate [auto|manual]", "warning");
         return;
       }
       const mode: SessionMode = modeArg === "manual" ? "manual" : "auto";
@@ -228,6 +284,10 @@ export function registerCaffeinate(
       }
 
       let session!: ActiveSession;
+      const processExitPromise = new Promise<void>((resolve) => {
+        childProcess.once("exit", () => resolve());
+        childProcess.once("error", () => resolve());
+      });
       const trayOptions: KdeStatusNotifierOptions = {
         onActivate: () => void stopSession(session, "tray"),
         onError: (error) => reportTrayError(context, error),
@@ -237,7 +297,9 @@ export function registerCaffeinate(
       session = {
         context,
         process: childProcess,
+        processExitPromise,
         startTime: Date.now(),
+        quote: selectAwakeQuote(),
         mode,
         tray,
         statusTimer: null,
@@ -265,7 +327,7 @@ export function registerCaffeinate(
 
         if (code !== 0 && signal !== "SIGTERM") {
           context.ui.notify(
-            `${LINUX_AWAKE_COMMAND.label} exited unexpectedly (${signal ?? `code ${code ?? "unknown"}`}).`,
+            `${LINUX_AWAKE_COMMAND.label} exited unexpectedly (${signal ?? `code ${code ?? "unknown"}`}). Check systemd-inhibit --list.`,
             "warning",
           );
         }
@@ -284,10 +346,7 @@ export function registerCaffeinate(
       } catch (error) {
         reportTrayError(context, error);
       }
-      if (session.finalized) {
-        await session.tray.stop();
-        return;
-      }
+      if (session.finalized) return;
 
       registerEscapeStop(session, stopSession);
     },
@@ -299,9 +358,61 @@ export function registerCaffeinate(
     }
   });
 
+  const registerSignal =
+    runtime.registerSignal ??
+    ((signal: ProcessSignal, handler: ProcessSignalHandler): void => {
+      process.once(signal, handler);
+    });
+  const sendSignal =
+    runtime.sendSignal ??
+    ((signal: ProcessSignal): void => {
+      process.kill(process.pid, signal);
+    });
+  const scheduleTimeout = runtime.setTimeout ?? setTimeout;
+  const cancelTimeout = runtime.clearTimeout ?? clearTimeout;
+  const signalCleanupTimeoutMs = runtime.signalCleanupTimeoutMs ?? 1_000;
+  let signalCleanupPromise: Promise<void> | null = null;
+
+  async function awaitBoundedCleanup(cleanup: Promise<void>): Promise<void> {
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    const deadline = new Promise<void>((resolve) => {
+      timeout = scheduleTimeout(resolve, signalCleanupTimeoutMs);
+    });
+    await Promise.race([cleanup.catch(() => undefined), deadline]);
+    if (timeout) cancelTimeout(timeout);
+  }
+
+  function handleProcessSignal(signal: ProcessSignal): void {
+    if (signalCleanupPromise) return;
+
+    const session = activeSession;
+    signalCleanupPromise = (async () => {
+      if (session) {
+        const cleanup = Promise.all([
+          stopSession(session, "process-signal"),
+          session.processExitPromise,
+        ]).then(() => undefined);
+        await awaitBoundedCleanup(cleanup);
+      }
+      sendSignal(signal);
+    })();
+    void signalCleanupPromise.catch(() => {
+      // The original signal was already received. There is no safe async
+      // cleanup left to perform if forwarding the termination also fails.
+    });
+  }
+
+  if (
+    runtime.registerProcessSignals === true ||
+    runtime.registerProcessExit !== false
+  ) {
+    registerSignal("SIGINT", () => handleProcessSignal("SIGINT"));
+    registerSignal("SIGTERM", () => handleProcessSignal("SIGTERM"));
+  }
+
   if (runtime.registerProcessExit !== false) {
     process.once("exit", () => {
-      if (activeSession) void stopSession(activeSession, "process-exit-hook");
+      if (activeSession) stopSessionSync(activeSession);
     });
   }
 
